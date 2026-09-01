@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Outfit', 'Noto Sans Arabic', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Utilitaires de masquage de la barre de défilement */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Support RTL et Polices Arabe */
+.dir-rtl {
+  direction: rtl;
+}
+
+.font-arabic {
+  font-family: 'Noto Sans Arabic', 'Outfit', sans-serif;
+}
+
+/* Keyframes et animations d'apparition */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out forwards;
+}
