@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Mail, Lock, LogIn, UserPlus, Sparkles, AlertCircle } from 'lucide-react';
+import { X, Mail, Lock, LogIn, UserPlus, Sparkles, AlertCircle, Zap, CheckCircle2 } from 'lucide-react';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../services/supabaseClient';
 
 export const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
@@ -8,17 +8,19 @@ export const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [infoMsg, setInfoMsg] = useState('');
 
   if (!isOpen) return null;
 
   const handleGoogleSignIn = async () => {
     setErrorMsg('');
+    setInfoMsg('');
     setLoading(true);
     try {
       await signInWithGoogle();
-      // Redirection automatique via OAuth
     } catch (err) {
-      setErrorMsg(err.message || 'Erreur lors de la connexion avec Google');
+      console.error(err);
+      setErrorMsg('Google OAuth : Vérifiez que le fournisseur Google est activé dans votre console Supabase (Auth > Providers > Google).');
       setLoading(false);
     }
   };
@@ -26,19 +28,60 @@ export const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+    setInfoMsg('');
     setLoading(true);
 
     try {
       if (isSignUp) {
         const data = await signUpWithEmail(email, password);
-        if (onAuthSuccess) onAuthSuccess(data?.user);
+        if (data?.user) {
+          setInfoMsg('Compte créé avec succès ! Si la confirmation d\'email est activée sur Supabase, vérifiez votre boîte de réception.');
+          if (onAuthSuccess) onAuthSuccess(data.user);
+        }
       } else {
         const data = await signInWithEmail(email, password);
-        if (onAuthSuccess) onAuthSuccess(data?.user);
+        if (data?.user) {
+          if (onAuthSuccess) onAuthSuccess(data.user);
+          onClose();
+        }
       }
-      onClose();
     } catch (err) {
-      setErrorMsg(err.message || 'Échec de l\'authentification');
+      console.error(err);
+      if (err.message?.includes('Invalid login credentials')) {
+        setErrorMsg('Identifiants incorrects. Cliquez sur "Créer un compte" pour vous inscrire.');
+      } else {
+        setErrorMsg(err.message || 'Erreur lors de l\'authentification Supabase');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Connexion instantanée avec un compte de test Supabase
+  const handleQuickDemoAuth = async () => {
+    setErrorMsg('');
+    setInfoMsg('');
+    setLoading(true);
+
+    const demoEmail = 'test.user@depenses.tn';
+    const demoPass = 'Password123!';
+
+    try {
+      // 1. Tenter la connexion
+      let data = await signInWithEmail(demoEmail, demoPass).catch(() => null);
+      
+      // 2. Si pas encore créé, s'inscrire automatiquement
+      if (!data?.user) {
+        data = await signUpWithEmail(demoEmail, demoPass);
+      }
+
+      if (data?.user) {
+        if (onAuthSuccess) onAuthSuccess(data.user);
+        onClose();
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('Erreur lors de la création du compte démo : ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -56,9 +99,9 @@ export const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
             </div>
             <div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                {isSignUp ? 'Créer un Compte' : 'Connexion'}
+                {isSignUp ? 'Créer un Compte Supabase' : 'Connexion Supabase'}
               </h3>
-              <p className="text-xs text-gray-400">Synchronisez vos dépenses Supabase</p>
+              <p className="text-xs text-gray-400">Authentification & Cloud Sync</p>
             </div>
           </div>
           <button
@@ -69,15 +112,25 @@ export const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
           </button>
         </div>
 
+        {/* Bouton 1-Click Connexion Démo Supabase */}
+        <button
+          type="button"
+          onClick={handleQuickDemoAuth}
+          disabled={loading}
+          className="w-full py-3 px-4 mb-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-2xl shadow-md flex items-center justify-center space-x-2 transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-50"
+        >
+          <Zap className="w-4 h-4 text-amber-300 animate-bounce" />
+          <span>🚀 1-Click Connexion Démo (test.user@depenses.tn)</span>
+        </button>
+
         {/* Bouton Gmail / Google OAuth */}
         <button
           type="button"
           onClick={handleGoogleSignIn}
           disabled={loading}
-          className="w-full py-3.5 px-4 mb-4 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/80 text-gray-700 dark:text-gray-200 font-bold text-sm rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm flex items-center justify-center space-x-3 transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-50"
+          className="w-full py-3 px-4 mb-4 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/80 text-gray-700 dark:text-gray-200 font-bold text-xs rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs flex items-center justify-center space-x-3 transition-all hover:scale-[1.01] active:scale-95 disabled:opacity-50"
         >
-          {/* Logo SVG Google officiel */}
-          <svg className="w-5 h-5" viewBox="0 0 24 24">
+          <svg className="w-4 h-4" viewBox="0 0 24 24">
             <path
               fill="#4285F4"
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -98,23 +151,30 @@ export const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
           <span>Continuer avec Google / Gmail</span>
         </button>
 
-        <div className="relative flex py-2 items-center mb-4">
+        <div className="relative flex py-1 items-center mb-3">
           <div className="flex-grow border-t border-gray-200 dark:border-gray-800"></div>
-          <span className="flex-shrink mx-3 text-[11px] font-bold text-gray-400 uppercase">ou e-mail</span>
+          <span className="flex-shrink mx-3 text-[10px] font-bold text-gray-400 uppercase">ou e-mail manuel</span>
           <div className="flex-grow border-t border-gray-200 dark:border-gray-800"></div>
         </div>
 
         {errorMsg && (
-          <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-2xl flex items-start space-x-2 text-xs text-red-600 dark:text-red-300">
+          <div className="mb-3 p-2.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-2xl flex items-start space-x-2 text-xs text-red-600 dark:text-red-300">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>{errorMsg}</span>
           </div>
         )}
 
+        {infoMsg && (
+          <div className="mb-3 p-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl flex items-start space-x-2 text-xs text-emerald-600 dark:text-emerald-300">
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{infoMsg}</span>
+          </div>
+        )}
+
         {/* Formulaire Email */}
-        <form onSubmit={handleEmailAuth} className="space-y-3">
+        <form onSubmit={handleEmailAuth} className="space-y-2.5">
           <div>
-            <label className="block text-[11px] font-semibold text-gray-500 mb-1">Adresse E-mail</label>
+            <label className="block text-[10px] font-semibold text-gray-500 mb-1">Adresse E-mail</label>
             <div className="relative">
               <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
@@ -123,13 +183,13 @@ export const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
                 placeholder="votre.email@gmail.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-900 dark:text-gray-100 focus:outline-none"
+                className="w-full pl-10 pr-4 py-2 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-900 dark:text-gray-100 focus:outline-none"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-[11px] font-semibold text-gray-500 mb-1">Mot de passe</label>
+            <label className="block text-[10px] font-semibold text-gray-500 mb-1">Mot de passe</label>
             <div className="relative">
               <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
@@ -139,7 +199,7 @@ export const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-900 dark:text-gray-100 focus:outline-none"
+                className="w-full pl-10 pr-4 py-2 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-900 dark:text-gray-100 focus:outline-none"
               />
             </div>
           </div>
@@ -147,15 +207,14 @@ export const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-2xl shadow-md transition-all flex items-center justify-center space-x-1.5"
+            className="w-full py-2.5 mt-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-2xl shadow-md transition-all flex items-center justify-center space-x-1.5"
           >
             {isSignUp ? <UserPlus className="w-4 h-4" /> : <LogIn className="w-4 h-4" />}
-            <span>{isSignUp ? 'Créer mon Compte' : 'Se Connecter'}</span>
+            <span>{isSignUp ? 'S\'inscrire' : 'Se Connecter'}</span>
           </button>
         </form>
 
-        {/* Switch Inscription / Connexion */}
-        <div className="mt-4 text-center">
+        <div className="mt-3 text-center">
           <button
             type="button"
             onClick={() => setIsSignUp(!isSignUp)}

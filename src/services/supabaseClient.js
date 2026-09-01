@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { INITIAL_MOCK_EXPENSES, DEFAULT_BUDGET } from '../utils/mockData';
 
-// Obtenir la configuration depuis localStorage ou .env
 const getSupabaseConfig = () => {
   const savedUrl = localStorage.getItem('supabase_url');
   const savedKey = localStorage.getItem('supabase_key');
@@ -23,14 +22,13 @@ export const initSupabaseClient = () => {
       supabaseInstance = createClient(url, key);
       return supabaseInstance;
     } catch (e) {
-      console.warn('Erreur initialisation Supabase Client, bascule sur mode LocalStorage', e);
+      console.warn('Erreur initialisation Supabase Client:', e);
       supabaseInstance = null;
     }
   }
   return null;
 };
 
-// Initialisation au chargement
 initSupabaseClient();
 
 export const isSupabaseConfigured = () => {
@@ -39,7 +37,7 @@ export const isSupabaseConfigured = () => {
 };
 
 /**
- * AUTHENTIFICATION GMAIL / GOOGLE & EMAIL (Supabase Auth)
+ * AUTHENTIFICATION GMAIL / GOOGLE & EMAIL
  */
 
 export const signInWithGoogle = async () => {
@@ -53,7 +51,10 @@ export const signInWithGoogle = async () => {
     }
   });
 
-  if (error) throw error;
+  if (error) {
+    console.error('Erreur Supabase Google Auth:', error);
+    throw error;
+  }
   return data;
 };
 
@@ -66,7 +67,10 @@ export const signInWithEmail = async (email, password) => {
     password
   });
 
-  if (error) throw error;
+  if (error) {
+    console.error('Erreur Supabase Email Auth:', error);
+    throw error;
+  }
   return data;
 };
 
@@ -79,7 +83,10 @@ export const signUpWithEmail = async (email, password) => {
     password
   });
 
-  if (error) throw error;
+  if (error) {
+    console.error('Erreur Supabase SignUp:', error);
+    throw error;
+  }
   return data;
 };
 
@@ -94,8 +101,12 @@ export const signOutUser = async () => {
 export const getCurrentUser = async () => {
   const client = initSupabaseClient();
   if (client) {
-    const { data: { user } } = await client.auth.getUser();
-    return user;
+    try {
+      const { data: { user } } = await client.auth.getUser();
+      return user;
+    } catch (e) {
+      return null;
+    }
   }
   return null;
 };
@@ -111,7 +122,7 @@ export const onAuthStateChange = (callback) => {
 };
 
 /**
- * GESTION DES DÉPENSES (Supabase + LocalStorage Fallback)
+ * GESTION DES DÉPENSES
  */
 export const getExpenses = async () => {
   const client = initSupabaseClient();
@@ -125,9 +136,11 @@ export const getExpenses = async () => {
       if (!error && data) {
         localStorage.setItem('local_depenses', JSON.stringify(data));
         return data;
+      } else if (error) {
+        console.warn('Erreur lecture Supabase (depenses):', error.message);
       }
     } catch (err) {
-      console.warn('Erreur Supabase getExpenses, lecture locale:', err);
+      console.warn('Exception lecture Supabase:', err);
     }
   }
 
@@ -159,6 +172,8 @@ export const addExpense = async (expenseData) => {
     created_at: new Date().toISOString()
   };
 
+  let isSavedInCloud = false;
+
   if (client) {
     try {
       const insertPayload = {
@@ -169,6 +184,7 @@ export const addExpense = async (expenseData) => {
         photo_url: formattedExpense.photo_url || null
       };
 
+      // Attacher le user_id si connecté
       if (user) {
         insertPayload.user_id = user.id;
       }
@@ -179,20 +195,24 @@ export const addExpense = async (expenseData) => {
         .select();
 
       if (!error && data && data.length > 0) {
+        isSavedInCloud = true;
         const current = await getExpenses();
         const updated = [data[0], ...current];
         localStorage.setItem('local_depenses', JSON.stringify(updated));
-        return data[0];
+        return { item: data[0], cloud: true };
+      } else if (error) {
+        console.error('⚠️ Supabase Insert Error:', error.message, error.details);
       }
     } catch (err) {
-      console.warn('Erreur insertion Supabase, enregistrement local:', err);
+      console.error('⚠️ Exception lors de l\'insertion Supabase:', err);
     }
   }
 
+  // Fallback LocalStorage si Supabase est hors-ligne ou si RLS bloque sans login
   const current = await getExpenses();
   const updated = [formattedExpense, ...current];
   localStorage.setItem('local_depenses', JSON.stringify(updated));
-  return formattedExpense;
+  return { item: formattedExpense, cloud: isSavedInCloud };
 };
 
 export const deleteExpense = async (id) => {
@@ -231,9 +251,11 @@ export const uploadExpensePhoto = async (file) => {
           .from('factures')
           .getPublicUrl(filePath);
         return publicUrlData.publicUrl;
+      } else if (error) {
+        console.warn('Storage error:', error.message);
       }
     } catch (err) {
-      console.warn('Erreur upload Supabase storage, conversion Base64 locale:', err);
+      console.warn('Erreur upload Supabase storage:', err);
     }
   }
 
@@ -246,9 +268,6 @@ export const uploadExpensePhoto = async (file) => {
   });
 };
 
-/**
- * GESTION DU BUDGET MENSUEL
- */
 export const getMonthlyBudget = () => {
   const b = localStorage.getItem('user_monthly_budget');
   return b ? parseFloat(b) : DEFAULT_BUDGET;

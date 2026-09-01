@@ -36,17 +36,16 @@ export function App() {
   const [toast, setToast] = useState({ message: '', type: 'success' });
   const [isMobileFrame, setIsMobileFrame] = useState(false);
 
-  // Initialisation des données et de l'authentification
   useEffect(() => {
     loadData();
     initScheduledNotificationTriggers();
 
-    // Écoute de l'état d'authentification Supabase
+    // Écouteur de session Supabase Auth
     getCurrentUser().then(user => setCurrentUser(user));
     const { data: authListener } = onAuthStateChange((event, user) => {
       setCurrentUser(user);
       if (user) {
-        setToast({ message: `Bienvenue ${user.email} ! 👋`, type: 'success' });
+        setToast({ message: `Connecté sur Supabase : ${user.email} ☁️`, type: 'success' });
         loadData();
       }
     });
@@ -74,9 +73,15 @@ export function App() {
   };
 
   const handleSaveExpense = async (expenseData) => {
-    await addExpense(expenseData);
+    const result = await addExpense(expenseData);
     await loadData();
-    setToast({ message: 'Dépense enregistrée avec succès ! 💰', type: 'success' });
+
+    if (result?.cloud) {
+      setToast({ message: 'Dépense enregistrée dans votre Supabase Cloud ! ☁️', type: 'success' });
+    } else {
+      setToast({ message: 'Dépense enregistrée dans l\'application (mode local) 📱', type: 'success' });
+    }
+
     setActiveTab('dashboard');
   };
 
@@ -113,7 +118,7 @@ export function App() {
         onClose={() => setShowAuthModal(false)}
         onAuthSuccess={(user) => {
           setCurrentUser(user);
-          setToast({ message: 'Connexion réussie !', type: 'success' });
+          setToast({ message: 'Connexion Supabase réussie ! ☁️', type: 'success' });
         }}
       />
 
