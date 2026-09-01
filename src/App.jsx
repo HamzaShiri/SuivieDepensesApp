@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { NavigationBar } from './components/NavigationBar';
 import { Toast } from './components/Toast';
+import { AuthModal } from './components/AuthModal';
 
 import { Dashboard } from './pages/Dashboard';
 import { AddExpense } from './pages/AddExpense';
@@ -9,7 +10,15 @@ import { ExpenseList } from './pages/ExpenseList';
 import { Statistics } from './pages/Statistics';
 import { Settings } from './pages/Settings';
 
-import { getExpenses, addExpense, deleteExpense, getMonthlyBudget, setMonthlyBudget } from './services/supabaseClient';
+import {
+  getExpenses,
+  addExpense,
+  deleteExpense,
+  getMonthlyBudget,
+  setMonthlyBudget,
+  getCurrentUser,
+  onAuthStateChange
+} from './services/supabaseClient';
 import { initScheduledNotificationTriggers } from './services/notificationService';
 import { calculateMonthlyTotal } from './utils/dates';
 import { Smartphone, Monitor } from 'lucide-react';
@@ -18,6 +27,8 @@ export function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [expenses, setExpenses] = useState([]);
   const [monthlyBudget, setMonthlyBudgetState] = useState(getMonthlyBudget());
+  const [currentUser, setCurrentUser] = useState(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(
     localStorage.getItem('theme') === 'dark' ||
     (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -25,10 +36,26 @@ export function App() {
   const [toast, setToast] = useState({ message: '', type: 'success' });
   const [isMobileFrame, setIsMobileFrame] = useState(false);
 
-  // Initialisation des données et du thème
+  // Initialisation des données et de l'authentification
   useEffect(() => {
     loadData();
     initScheduledNotificationTriggers();
+
+    // Écoute de l'état d'authentification Supabase
+    getCurrentUser().then(user => setCurrentUser(user));
+    const { data: authListener } = onAuthStateChange((event, user) => {
+      setCurrentUser(user);
+      if (user) {
+        setToast({ message: `Bienvenue ${user.email} ! 👋`, type: 'success' });
+        loadData();
+      }
+    });
+
+    return () => {
+      if (authListener?.subscription) {
+        authListener.subscription.unsubscribe();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -47,7 +74,7 @@ export function App() {
   };
 
   const handleSaveExpense = async (expenseData) => {
-    const saved = await addExpense(expenseData);
+    await addExpense(expenseData);
     await loadData();
     setToast({ message: 'Dépense enregistrée avec succès ! 💰', type: 'success' });
     setActiveTab('dashboard');
@@ -80,6 +107,16 @@ export function App() {
         onClose={() => setToast({ message: '', type: 'success' })}
       />
 
+      {/* Modal Authentification Gmail / Google */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onAuthSuccess={(user) => {
+          setCurrentUser(user);
+          setToast({ message: 'Connexion réussie !', type: 'success' });
+        }}
+      />
+
       {/* Toggler cadre mobile / Plein écran */}
       <div className="fixed top-3 right-3 z-50 hidden md:flex items-center space-x-1 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm text-xs font-semibold text-gray-600 dark:text-gray-300">
         <button
@@ -110,6 +147,8 @@ export function App() {
           title="💰 Mes Dépenses"
           monthlyTotal={monthlyTotal}
           monthlyBudget={monthlyBudget}
+          currentUser={currentUser}
+          onOpenAuth={() => setShowAuthModal(true)}
           onOpenSettings={() => setActiveTab('settings')}
         />
 
@@ -152,6 +191,8 @@ export function App() {
               onUpdateBudget={handleUpdateBudget}
               isDarkMode={isDarkMode}
               onToggleTheme={() => setIsDarkMode(!isDarkMode)}
+              currentUser={currentUser}
+              onOpenAuth={() => setShowAuthModal(true)}
               onShowToast={showToastMsg}
             />
           )}

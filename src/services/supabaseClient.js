@@ -39,6 +39,78 @@ export const isSupabaseConfigured = () => {
 };
 
 /**
+ * AUTHENTIFICATION GMAIL / GOOGLE & EMAIL (Supabase Auth)
+ */
+
+export const signInWithGoogle = async () => {
+  const client = initSupabaseClient();
+  if (!client) throw new Error('Supabase client non configuré');
+
+  const { data, error } = await client.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin
+    }
+  });
+
+  if (error) throw error;
+  return data;
+};
+
+export const signInWithEmail = async (email, password) => {
+  const client = initSupabaseClient();
+  if (!client) throw new Error('Supabase client non configuré');
+
+  const { data, error } = await client.auth.signInWithPassword({
+    email,
+    password
+  });
+
+  if (error) throw error;
+  return data;
+};
+
+export const signUpWithEmail = async (email, password) => {
+  const client = initSupabaseClient();
+  if (!client) throw new Error('Supabase client non configuré');
+
+  const { data, error } = await client.auth.signUp({
+    email,
+    password
+  });
+
+  if (error) throw error;
+  return data;
+};
+
+export const signOutUser = async () => {
+  const client = initSupabaseClient();
+  if (client) {
+    await client.auth.signOut();
+  }
+  localStorage.removeItem('supabase_user_session');
+};
+
+export const getCurrentUser = async () => {
+  const client = initSupabaseClient();
+  if (client) {
+    const { data: { user } } = await client.auth.getUser();
+    return user;
+  }
+  return null;
+};
+
+export const onAuthStateChange = (callback) => {
+  const client = initSupabaseClient();
+  if (client) {
+    return client.auth.onAuthStateChange((event, session) => {
+      callback(event, session?.user || null);
+    });
+  }
+  return { data: { subscription: { unsubscribe: () => {} } } };
+};
+
+/**
  * GESTION DES DÉPENSES (Supabase + LocalStorage Fallback)
  */
 export const getExpenses = async () => {
@@ -51,7 +123,6 @@ export const getExpenses = async () => {
         .order('date', { ascending: false });
       
       if (!error && data) {
-        // Mettre à jour aussi le miroir local
         localStorage.setItem('local_depenses', JSON.stringify(data));
         return data;
       }
@@ -70,17 +141,19 @@ export const getExpenses = async () => {
     }
   }
 
-  // Initialisation par défaut
   localStorage.setItem('local_depenses', JSON.stringify(INITIAL_MOCK_EXPENSES));
   return INITIAL_MOCK_EXPENSES;
 };
 
 export const addExpense = async (expenseData) => {
   const client = initSupabaseClient();
+  const user = await getCurrentUser();
   const newId = 'exp-' + Date.now();
+
   const formattedExpense = {
     ...expenseData,
     id: newId,
+    user_id: user ? user.id : null,
     montant: parseFloat(expenseData.montant),
     date: expenseData.date || new Date().toISOString(),
     created_at: new Date().toISOString()
@@ -88,20 +161,24 @@ export const addExpense = async (expenseData) => {
 
   if (client) {
     try {
-      // Tentative d'insertion Supabase
+      const insertPayload = {
+        montant: formattedExpense.montant,
+        description: formattedExpense.description,
+        categorie: formattedExpense.categorie,
+        date: formattedExpense.date,
+        photo_url: formattedExpense.photo_url || null
+      };
+
+      if (user) {
+        insertPayload.user_id = user.id;
+      }
+
       const { data, error } = await client
         .from('depenses')
-        .insert([{
-          montant: formattedExpense.montant,
-          description: formattedExpense.description,
-          categorie: formattedExpense.categorie,
-          date: formattedExpense.date,
-          photo_url: formattedExpense.photo_url || null
-        }])
+        .insert([insertPayload])
         .select();
 
       if (!error && data && data.length > 0) {
-        // Ajouter dans la copie locale
         const current = await getExpenses();
         const updated = [data[0], ...current];
         localStorage.setItem('local_depenses', JSON.stringify(updated));
@@ -112,7 +189,6 @@ export const addExpense = async (expenseData) => {
     }
   }
 
-  // Fallback LocalStorage
   const current = await getExpenses();
   const updated = [formattedExpense, ...current];
   localStorage.setItem('local_depenses', JSON.stringify(updated));
@@ -161,7 +237,6 @@ export const uploadExpensePhoto = async (file) => {
     }
   }
 
-  // Fallback Local Storage DataURL (Base64)
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onloadend = () => {
