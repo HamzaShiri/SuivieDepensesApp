@@ -165,7 +165,7 @@ export const parseHybridVoiceInput = (rawText) => {
 };
 
 /**
- * SpeechRecognition Web API (Optimisé pour fr-FR et ar-TN)
+ * SpeechRecognition Web API (Support Robuste fr-FR, fr-TN et ar-TN)
  */
 export const createSpeechRecognizer = ({ lang = 'fr-FR', onResult, onError, onEnd }) => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -175,9 +175,11 @@ export const createSpeechRecognizer = ({ lang = 'fr-FR', onResult, onError, onEn
   }
 
   const recognition = new SpeechRecognition();
-  recognition.continuous = false; // Mode non-continu pour réactivité maximale
+  recognition.continuous = false;
   recognition.interimResults = true;
-  recognition.lang = lang;
+  
+  // Utiliser la langue choisie ('fr-FR' ou 'ar-TN')
+  recognition.lang = lang || 'fr-FR';
 
   recognition.onresult = (event) => {
     let resultText = '';

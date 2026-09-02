@@ -39,6 +39,14 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData, onDirectS
     setRecordingSeconds(0);
   };
 
+  const handleSwitchLanguage = (newLang) => {
+    if (isRecording) {
+      stopRecording();
+    }
+    setLang(newLang);
+    setErrorMsg('');
+  };
+
   const triggerHaptic = () => {
     if (navigator.vibrate) {
       try { navigator.vibrate(50); } catch (e) {}
@@ -58,6 +66,14 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData, onDirectS
     setTranscript('');
     setParsedResult(null);
 
+    // Annuler tout enregistrement précédent en cours
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+
     const rec = createSpeechRecognizer({
       lang,
       onResult: (text, isFinal) => {
@@ -70,21 +86,29 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData, onDirectS
       onError: (err) => {
         console.warn('Erreur SpeechRecognition:', err);
         setIsRecording(false);
+        if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = null;
+        }
         if (err === 'not-allowed') {
           setErrorMsg('Permission micro refusée dans le navigateur.');
         } else if (err === 'no-speech') {
-          setErrorMsg('Aucune voix détectée. Parlez plus fort en face du micro.');
+          setErrorMsg('Aucune voix détectée. Parlez en face du micro.');
         } else {
-          setErrorMsg('Impossible d\'activer le micro. Saisissez votre texte ci-dessous.');
+          setErrorMsg(`Micro indisponible en ${lang === 'fr-FR' ? 'Français' : 'Arabe'}. Vous pouvez saisir directement ci-dessous.`);
         }
       },
       onEnd: () => {
         setIsRecording(false);
+        if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = null;
+        }
       }
     });
 
     if (!rec) {
-      setErrorMsg('L\'API Web Speech n\'est pas disponible. Utilisez la saisie ou nos exemples.');
+      setErrorMsg('L\'API Web Speech n\'est pas disponible sur ce navigateur. Utilisez les exemples ou la saisie.');
       return;
     }
 
@@ -94,7 +118,7 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData, onDirectS
       setIsRecording(true);
       setRecordingSeconds(0);
 
-      // Chronomètre & Limite max (60s)
+      // Chronomètre
       timerIntervalRef.current = setInterval(() => {
         setRecordingSeconds((prev) => {
           if (prev >= 59) {
@@ -120,7 +144,9 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData, onDirectS
     }
 
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (e) {}
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
       recognitionRef.current = null;
     }
 
@@ -145,7 +171,6 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData, onDirectS
     }
   };
 
-  // INJECTION DANS LE FORMULAIRE
   const handleConfirm = () => {
     if (parsedResult) {
       onConfirmVoiceData(parsedResult);
@@ -153,7 +178,6 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData, onDirectS
     }
   };
 
-  // ENREGISTREMENT DIRECT DANS SUPABASE
   const handleDirectSave = async () => {
     if (parsedResult && onDirectSaveExpense) {
       await onDirectSaveExpense({
@@ -180,9 +204,9 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData, onDirectS
             </div>
             <div>
               <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">
-                Saisie Vocale & Injection IA
+                Saisie Vocale Multilingue
               </h3>
-              <p className="text-[11px] text-gray-400">Reconnaissance multilingue Arabe + Français</p>
+              <p className="text-[11px] text-gray-400">Arabe Tunisien (`ar-TN`) et Français (`fr-FR`)</p>
             </div>
           </div>
           <button
@@ -197,7 +221,7 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData, onDirectS
         <div className="flex items-center justify-center space-x-1.5 mb-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl">
           <button
             type="button"
-            onClick={() => setLang('ar-TN')}
+            onClick={() => handleSwitchLanguage('ar-TN')}
             className={`flex-1 py-1.5 px-2.5 rounded-xl text-xs font-bold transition-all ${
               lang === 'ar-TN'
                 ? 'bg-blue-600 text-white shadow-md'
@@ -208,7 +232,7 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData, onDirectS
           </button>
           <button
             type="button"
-            onClick={() => setLang('fr-FR')}
+            onClick={() => handleSwitchLanguage('fr-FR')}
             className={`flex-1 py-1.5 px-2.5 rounded-xl text-xs font-bold transition-all ${
               lang === 'fr-FR'
                 ? 'bg-blue-600 text-white shadow-md'
@@ -238,7 +262,7 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData, onDirectS
             ) : (
               <div className="flex flex-col items-center justify-center space-y-1">
                 <Mic className="w-9 h-9" />
-                <span className="text-[10px] font-extrabold uppercase tracking-wider">PARLER</span>
+                <span className="text-[10px] font-extrabold uppercase tracking-wider">PARLER ({lang === 'fr-FR' ? 'FR' : 'AR'})</span>
               </div>
             )}
 
@@ -251,7 +275,7 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData, onDirectS
             {isRecording ? (
               <div className="flex items-center justify-center space-x-2 text-red-600 dark:text-red-400 font-bold text-xs animate-pulse">
                 <Clock className="w-3.5 h-3.5" />
-                <span>Enregistrement... ({formatTimer(recordingSeconds)})</span>
+                <span>Enregistrement ({lang === 'fr-FR' ? 'Français' : 'Arabe'})... ({formatTimer(recordingSeconds)})</span>
               </div>
             ) : (
               <span className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">
