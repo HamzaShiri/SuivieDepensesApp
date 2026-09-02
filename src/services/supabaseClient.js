@@ -122,39 +122,48 @@ export const onAuthStateChange = (callback) => {
 };
 
 /**
- * GESTION DES DÉPENSES
+ * GESTION DES DÉPENSES AVEC ALIGNEMENT RLS (user_id = auth.uid())
  */
 export const getExpenses = async () => {
   const client = initSupabaseClient();
-  if (client) {
+  const user = await getCurrentUser();
+
+  if (client && user) {
     try {
       const { data, error } = await client
         .from('depenses')
         .select('*')
+        .eq('user_id', user.id)
         .order('date', { ascending: false });
       
       if (!error && data) {
-        localStorage.setItem('local_depenses', JSON.stringify(data));
+        localStorage.setItem(`user_expenses_${user.id}`, JSON.stringify(data));
         return data;
       } else if (error) {
-        console.warn('Erreur lecture Supabase (depenses):', error.message);
+        console.warn('Erreur RLS Supabase:', error.message);
       }
     } catch (err) {
       console.warn('Exception lecture Supabase:', err);
     }
   }
 
-  // Fallback LocalStorage
+  // Lecture fallback locale isolée par utilisateur
+  if (user) {
+    const userLocalData = localStorage.getItem(`user_expenses_${user.id}`);
+    if (userLocalData) {
+      try {
+        return JSON.parse(userLocalData);
+      } catch (e) {}
+    }
+  }
+
   const localData = localStorage.getItem('local_depenses');
   if (localData) {
     try {
       return JSON.parse(localData);
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   }
 
-  localStorage.setItem('local_depenses', JSON.stringify(INITIAL_MOCK_EXPENSES));
   return INITIAL_MOCK_EXPENSES;
 };
 
@@ -174,20 +183,16 @@ export const addExpense = async (expenseData) => {
 
   let isSavedInCloud = false;
 
-  if (client) {
+  if (client && user) {
     try {
       const insertPayload = {
+        user_id: user.id, // Strictement requis par la politique RLS Supabase
         montant: formattedExpense.montant,
         description: formattedExpense.description,
         categorie: formattedExpense.categorie,
         date: formattedExpense.date,
         photo_url: formattedExpense.photo_url || null
       };
-
-      // Attacher le user_id si connecté
-      if (user) {
-        insertPayload.user_id = user.id;
-      }
 
       const { data, error } = await client
         .from('depenses')
@@ -198,25 +203,32 @@ export const addExpense = async (expenseData) => {
         isSavedInCloud = true;
         const current = await getExpenses();
         const updated = [data[0], ...current];
-        localStorage.setItem('local_depenses', JSON.stringify(updated));
+        localStorage.setItem(`user_expenses_${user.id}`, JSON.stringify(updated));
         return { item: data[0], cloud: true };
       } else if (error) {
-        console.error('⚠️ Supabase Insert Error:', error.message, error.details);
+        console.error('⚠️ Erreur Insertion Supabase (RLS):', error.message, error.details);
       }
     } catch (err) {
-      console.error('⚠️ Exception lors de l\'insertion Supabase:', err);
+      console.error('⚠️ Exception insertion Supabase:', err);
     }
   }
 
-  // Fallback LocalStorage si Supabase est hors-ligne ou si RLS bloque sans login
+  // Fallback Local Storage
   const current = await getExpenses();
   const updated = [formattedExpense, ...current];
-  localStorage.setItem('local_depenses', JSON.stringify(updated));
+  if (user) {
+    localStorage.setItem(`user_expenses_${user.id}`, JSON.stringify(updated));
+  } else {
+    localStorage.setItem('local_depenses', JSON.stringify(updated));
+  }
+
   return { item: formattedExpense, cloud: isSavedInCloud };
 };
 
 export const deleteExpense = async (id) => {
   const client = initSupabaseClient();
+  const user = await getCurrentUser();
+
   if (client) {
     try {
       await client.from('depenses').delete().eq('id', id);
@@ -227,8 +239,37 @@ export const deleteExpense = async (id) => {
 
   const current = await getExpenses();
   const updated = current.filter(item => item.id !== id);
-  localStorage.setItem('local_depenses', JSON.stringify(updated));
+  if (user) {
+    localStorage.setItem(`user_expenses_${user.id}`, JSON.stringify(updated));
+  } else {
+    localStorage.setItem('local_depenses', JSON.stringify(updated));
+  }
   return true;
+};
+
+/**
+ * OUTIL DE DIAGNOSTIC DE CONNEXION SUPABASE
+ */
+export const testSupabaseDatabaseConnection = async () => {
+  const client = initSupabaseClient();
+  const user = await getCurrentUser();
+
+  if (!client) return { success: false, message: 'Client Supabase non initialisé.' };
+  if (!user) return { success: false, message: 'Aucun utilisateur authentifié. Connectez-vous d\'abord.' };
+
+  try {
+    const { data, error } = await client
+      .from('depenses')
+      .select('count', { count: 'exact', head: true });
+
+    if (error) {
+      return { success: false, message: `Erreur table "depenses" : ${error.message}` };
+    }
+
+    return { success: true, message: `Connexion Cloud Supabase OK ! Table "depenses" accessible.` };
+  } catch (err) {
+    return { success: false, message: `Exception Supabase : ${err.message}` };
+  }
 };
 
 /**
@@ -251,8 +292,6 @@ export const uploadExpensePhoto = async (file) => {
           .from('factures')
           .getPublicUrl(filePath);
         return publicUrlData.publicUrl;
-      } else if (error) {
-        console.warn('Storage error:', error.message);
       }
     } catch (err) {
       console.warn('Erreur upload Supabase storage:', err);

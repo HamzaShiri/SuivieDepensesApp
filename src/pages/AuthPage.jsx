@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Mail, Lock, LogIn, UserPlus, Sparkles, AlertCircle, CheckCircle2, Zap, ShieldCheck, HelpCircle } from 'lucide-react';
+import { Mail, Lock, LogIn, UserPlus, Sparkles, AlertCircle, CheckCircle2, Zap, ShieldCheck, KeyRound, HelpCircle } from 'lucide-react';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../services/supabaseClient';
+import { OTPKeypadModal } from '../components/OTPKeypadModal';
 
 export const AuthPage = ({ onAuthSuccess }) => {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -11,6 +12,12 @@ export const AuthPage = ({ onAuthSuccess }) => {
   const [infoMsg, setInfoMsg] = useState('');
   const [showGoogleGuide, setShowGoogleGuide] = useState(false);
 
+  // État OTP PIN
+  const [pendingUser, setPendingUser] = useState(null);
+  const [showOTPModal, setShowOTPModal] = useState(false);
+  const [otpMode, setOtpMode] = useState('verify'); // 'verify' ou 'create'
+  const [savedOTP, setSavedOTP] = useState('');
+
   const handleGoogleSignIn = async () => {
     setErrorMsg('');
     setInfoMsg('');
@@ -20,7 +27,7 @@ export const AuthPage = ({ onAuthSuccess }) => {
     } catch (err) {
       console.error('Google Auth Error:', err);
       setShowGoogleGuide(true);
-      setErrorMsg('Google OAuth n\'est pas encore activé sur votre console Supabase. Utilisez le bouton "Connexion Démo 1-Click" ou l\'E-mail ci-dessous.');
+      setErrorMsg('Google OAuth n\'est pas activé dans votre console Supabase. Utilisez le bouton "Connexion 1-Click Démo" ci-dessous.');
       setLoading(false);
     }
   };
@@ -35,20 +42,18 @@ export const AuthPage = ({ onAuthSuccess }) => {
       if (isSignUp) {
         const data = await signUpWithEmail(email, password);
         if (data?.user) {
-          setInfoMsg('Compte créé avec succès ! Connectez-vous avec vos identifiants.');
-          setIsSignUp(false);
-          if (onAuthSuccess) onAuthSuccess(data.user);
+          processUserOTP(data.user);
         }
       } else {
         const data = await signInWithEmail(email, password);
         if (data?.user) {
-          if (onAuthSuccess) onAuthSuccess(data.user);
+          processUserOTP(data.user);
         }
       }
     } catch (err) {
       console.error(err);
       if (err.message?.includes('Invalid login credentials')) {
-        setErrorMsg('Identifiants incorrects. Pour créer votre compte Supabase, cliquez sur "S\'inscrire".');
+        setErrorMsg('Identifiants incorrects. Pour vous inscrire, cliquez sur "S\'inscrire".');
       } else {
         setErrorMsg(err.message || 'Échec de l\'authentification Supabase');
       }
@@ -57,7 +62,6 @@ export const AuthPage = ({ onAuthSuccess }) => {
     }
   };
 
-  // Connexion instantanée avec un compte démo dédié sur Supabase
   const handleQuickDemoAuth = async () => {
     setErrorMsg('');
     setInfoMsg('');
@@ -68,25 +72,63 @@ export const AuthPage = ({ onAuthSuccess }) => {
 
     try {
       let data = await signInWithEmail(demoEmail, demoPass).catch(() => null);
-      
       if (!data?.user) {
         data = await signUpWithEmail(demoEmail, demoPass);
       }
 
       if (data?.user) {
-        if (onAuthSuccess) onAuthSuccess(data.user);
+        processUserOTP(data.user);
       }
     } catch (err) {
       console.error(err);
-      setErrorMsg('Erreur création compte démo : ' + err.message);
+      setErrorMsg('Erreur compte démo : ' + err.message);
     } finally {
       setLoading(false);
     }
   };
 
+  // Traitement du Code PIN OTP à la connexion
+  const processUserOTP = (user) => {
+    const storedPin = localStorage.getItem(`otp_pin_${user.id}`);
+    setPendingUser(user);
+
+    if (!storedPin) {
+      // Premier accès : Création du Code PIN OTP
+      setSavedOTP('');
+      setOtpMode('create');
+      setShowOTPModal(true);
+    } else {
+      // Reconnexion : Vérification du Code PIN OTP
+      setSavedOTP(storedPin);
+      setOtpMode('verify');
+      setShowOTPModal(true);
+    }
+  };
+
+  const handleOTPSuccess = (pin) => {
+    if (otpMode === 'create' && pendingUser) {
+      localStorage.setItem(`otp_pin_${pendingUser.id}`, pin);
+    }
+    setShowOTPModal(false);
+    if (onAuthSuccess && pendingUser) {
+      onAuthSuccess(pendingUser);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-gray-950 flex flex-col justify-center items-center p-4">
-      <div className="max-w-md w-full bg-white dark:bg-gray-900 rounded-[32px] p-6 sm:p-8 shadow-2xl border border-gray-100 dark:border-gray-800 space-y-5">
+      
+      {/* Modal Clavier OTP PIN */}
+      <OTPKeypadModal
+        isOpen={showOTPModal}
+        mode={otpMode}
+        savedOTP={savedOTP}
+        userEmail={pendingUser?.email}
+        onSuccess={handleOTPSuccess}
+        onClose={() => setShowOTPModal(false)}
+      />
+
+      <div className="max-w-md w-full bg-white dark:bg-gray-900 rounded-[36px] p-6 sm:p-8 shadow-2xl border border-gray-100 dark:border-gray-800 space-y-5">
         
         {/* En-tête de bienvenue */}
         <div className="text-center space-y-2">
@@ -97,14 +139,14 @@ export const AuthPage = ({ onAuthSuccess }) => {
             💰 Mes Dépenses
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400 font-medium max-w-xs mx-auto">
-            Authentification Supabase Obligatoire (Chaque utilisateur consulte et enregistre uniquement ses propres données).
+            Authentification Supabase & Sécurité par Code PIN OTP (4 chiffres).
           </p>
         </div>
 
         {/* Badge d'isolation Supabase RLS */}
         <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-2xl flex items-center space-x-2 text-xs text-blue-700 dark:text-blue-300 font-semibold">
           <ShieldCheck className="w-4 h-4 shrink-0 text-blue-500" />
-          <span>Données sécurisées et isolées par Supabase RLS</span>
+          <span>Données RLS isolées + Déverrouillage par Code PIN OTP</span>
         </div>
 
         {/* BOUTON RECOMMANDÉ : 1-Click Connexion Démo Instantanée */}
@@ -146,19 +188,14 @@ export const AuthPage = ({ onAuthSuccess }) => {
           <span>Continuer avec Google / Gmail</span>
         </button>
 
-        {/* Message d'explication si Google Provider non activé dans la console Supabase */}
         {showGoogleGuide && (
           <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl text-[11px] text-amber-800 dark:text-amber-300 space-y-1">
             <div className="font-bold flex items-center space-x-1">
               <HelpCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span>Pourquoi l'erreur Google OAuth 400 s'affiche-t-elle ?</span>
+              <span>Activation Google Provider sur Supabase</span>
             </div>
             <p>
-              Supabase requiert que le fournisseur Google soit activé dans le tableau de bord Supabase : <br/>
-              <strong>Console Supabase ➔ Authentication ➔ Providers ➔ Google ➔ Enable Provider</strong>.
-            </p>
-            <p className="font-semibold text-emerald-700 dark:text-emerald-400">
-              💡 Solution instantanée sans configuration : Utilisez le bouton "🚀 Connexion 1-Click Démo" ou inscrivez-vous avec votre email ci-dessous !
+              Consultez votre tableau de bord Supabase ➔ Authentication ➔ Providers ➔ Google ➔ Enable.
             </p>
           </div>
         )}
@@ -222,7 +259,7 @@ export const AuthPage = ({ onAuthSuccess }) => {
             className="w-full py-3.5 mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-sm rounded-2xl shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center space-x-1.5"
           >
             {isSignUp ? <UserPlus className="w-4 h-4" /> : <LogIn className="w-4 h-4" />}
-            <span>{isSignUp ? 'S\'inscrire sur Supabase' : 'Se Connecter'}</span>
+            <span>{isSignUp ? 'S\'inscrire & Définir un PIN' : 'Se Connecter'}</span>
           </button>
         </form>
 

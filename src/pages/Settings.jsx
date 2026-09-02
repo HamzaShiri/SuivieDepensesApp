@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { isSupabaseConfigured, setMonthlyBudget, signOutUser } from '../services/supabaseClient';
+import { isSupabaseConfigured, setMonthlyBudget, signOutUser, testSupabaseDatabaseConnection } from '../services/supabaseClient';
 import { requestNotificationPermission } from '../services/notificationService';
-import { Settings as SettingsIcon, Moon, Sun, Bell, Database, Wallet, Download, User, LogOut, LogIn, ShieldCheck } from 'lucide-react';
+import { Settings as SettingsIcon, Moon, Sun, Bell, Database, Wallet, Download, User, LogOut, LogIn, ShieldCheck, KeyRound, Activity, CheckCircle2 } from 'lucide-react';
+import { OTPKeypadModal } from '../components/OTPKeypadModal';
 
 export const Settings = ({
   monthlyBudget,
@@ -9,7 +10,6 @@ export const Settings = ({
   isDarkMode,
   onToggleTheme,
   currentUser,
-  onOpenAuth,
   onShowToast
 }) => {
   const [budgetInput, setBudgetInput] = useState(monthlyBudget.toString());
@@ -19,6 +19,8 @@ export const Settings = ({
   const [supabaseUrl, setSupabaseUrl] = useState(localStorage.getItem('supabase_url') || '');
   const [supabaseKey, setSupabaseKey] = useState(localStorage.getItem('supabase_key') || '');
   const [supabaseStatus, setSupabaseStatus] = useState(isSupabaseConfigured());
+  const [isTestingSupabase, setIsTestingSupabase] = useState(false);
+  const [showChangePINModal, setShowChangePINModal] = useState(false);
 
   useEffect(() => {
     setBudgetInput(monthlyBudget.toString());
@@ -51,6 +53,27 @@ export const Settings = ({
     await signOutUser();
     onShowToast('Déconnecté de votre session Supabase', 'success');
     window.location.reload();
+  };
+
+  // Test de diagnostic Supabase RLS
+  const handleTestDatabase = async () => {
+    setIsTestingSupabase(true);
+    const res = await testSupabaseDatabaseConnection();
+    setIsTestingSupabase(false);
+
+    if (res.success) {
+      onShowToast(`✅ ${res.message}`, 'success');
+    } else {
+      onShowToast(`⚠️ ${res.message}`, 'error');
+    }
+  };
+
+  const handleSavePINSuccess = (newPin) => {
+    if (currentUser) {
+      localStorage.setItem(`otp_pin_${currentUser.id}`, newPin);
+      onShowToast('Nouveau Code PIN OTP enregistré avec succès ! 🔒', 'success');
+    }
+    setShowChangePINModal(false);
   };
 
   const handleSaveSupabaseConfig = (e) => {
@@ -89,6 +112,15 @@ export const Settings = ({
   return (
     <div className="space-y-4 pb-24 max-w-md mx-auto">
       
+      {/* Modal Changement Code PIN */}
+      <OTPKeypadModal
+        isOpen={showChangePINModal}
+        mode="create"
+        userEmail={currentUser?.email}
+        onSuccess={handleSavePINSuccess}
+        onClose={() => setShowChangePINModal(false)}
+      />
+
       {/* SECTION COMPTE UTILISATEUR GMAIL */}
       <div className="bg-gradient-to-tr from-blue-600 via-blue-700 to-indigo-700 rounded-3xl p-5 text-white shadow-lg shadow-blue-500/20">
         <div className="flex items-center justify-between">
@@ -97,14 +129,14 @@ export const Settings = ({
               {currentUser?.email ? currentUser.email.charAt(0).toUpperCase() : <User className="w-6 h-6" />}
             </div>
             <div>
-              <span className="text-xs text-blue-200 font-semibold block">Compte Utilisateur</span>
+              <span className="text-xs text-blue-200 font-semibold block">Compte Utilisateur Supabase</span>
               <h3 className="text-sm font-bold truncate max-w-[180px]">
                 {currentUser ? currentUser.email : 'Invité (Non connecté)'}
               </h3>
             </div>
           </div>
 
-          {currentUser ? (
+          {currentUser && (
             <button
               onClick={handleSignOut}
               className="px-3 py-1.5 bg-red-500/80 hover:bg-red-600 backdrop-blur-md text-white font-bold text-xs rounded-xl flex items-center space-x-1 transition-all"
@@ -112,16 +144,57 @@ export const Settings = ({
               <LogOut className="w-3.5 h-3.5" />
               <span>Déconnexion</span>
             </button>
-          ) : (
-            <button
-              onClick={onOpenAuth}
-              className="px-3 py-1.5 bg-white text-blue-700 font-bold text-xs rounded-xl flex items-center space-x-1 shadow-md hover:bg-blue-50 transition-all"
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              <span>Connexion Gmail</span>
-            </button>
           )}
         </div>
+      </div>
+
+      {/* SECTION SÉCURITÉ CODE PIN OTP */}
+      <div className="bg-white dark:bg-gray-800/90 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 shadow-xs flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+            <KeyRound className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+              Code PIN OTP de Sécurité
+            </h3>
+            <p className="text-xs text-gray-400">Protege vos dépenses par un code 4 chiffres</p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setShowChangePINModal(true)}
+          className="px-3 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 font-bold text-xs rounded-xl transition-all"
+        >
+          Modifier PIN
+        </button>
+      </div>
+
+      {/* SECTION DIAGNOSTIC SUPABASE CLOUD */}
+      <div className="bg-white dark:bg-gray-800/90 rounded-3xl p-5 border border-gray-100 dark:border-gray-800 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Database className="w-4 h-4 text-emerald-500" />
+            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+              Diagnostic Supabase Cloud
+            </h3>
+          </div>
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-700 border border-emerald-300">
+            RLS Active
+          </span>
+        </div>
+        <p className="text-xs text-gray-400">
+          Vérifiez l'accès direct et l'autorisation d'écriture dans la table "depenses" de votre Supabase.
+        </p>
+
+        <button
+          onClick={handleTestDatabase}
+          disabled={isTestingSupabase}
+          className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-2xl shadow-sm transition-all flex items-center justify-center space-x-1.5 disabled:opacity-50"
+        >
+          <Activity className="w-4 h-4 animate-spin" />
+          <span>🧪 Test Connexion & Table "depenses"</span>
+        </button>
       </div>
 
       {/* SECTION 1: BUDGET MENSUEL */}
