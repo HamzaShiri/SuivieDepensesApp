@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { NavigationBar } from './components/NavigationBar';
 import { Toast } from './components/Toast';
-import { AuthModal } from './components/AuthModal';
 
+import { AuthPage } from './pages/AuthPage';
 import { Dashboard } from './pages/Dashboard';
 import { AddExpense } from './pages/AddExpense';
 import { ExpenseList } from './pages/ExpenseList';
@@ -28,7 +28,8 @@ export function App() {
   const [expenses, setExpenses] = useState([]);
   const [monthlyBudget, setMonthlyBudgetState] = useState(getMonthlyBudget());
   const [currentUser, setCurrentUser] = useState(null);
-  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [isDarkMode, setIsDarkMode] = useState(
     localStorage.getItem('theme') === 'dark' ||
     (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -37,16 +38,25 @@ export function App() {
   const [isMobileFrame, setIsMobileFrame] = useState(false);
 
   useEffect(() => {
-    loadData();
     initScheduledNotificationTriggers();
 
     // Écouteur de session Supabase Auth
-    getCurrentUser().then(user => setCurrentUser(user));
+    getCurrentUser().then(user => {
+      setCurrentUser(user);
+      setAuthLoading(false);
+      if (user) {
+        loadData();
+      }
+    });
+
     const { data: authListener } = onAuthStateChange((event, user) => {
       setCurrentUser(user);
+      setAuthLoading(false);
       if (user) {
         setToast({ message: `Connecté sur Supabase : ${user.email} ☁️`, type: 'success' });
         loadData();
+      } else {
+        setExpenses([]);
       }
     });
 
@@ -77,7 +87,7 @@ export function App() {
     await loadData();
 
     if (result?.cloud) {
-      setToast({ message: 'Dépense enregistrée dans votre Supabase Cloud ! ☁️', type: 'success' });
+      setToast({ message: 'Dépense enregistrée dans votre compte Supabase Cloud ! ☁️', type: 'success' });
     } else {
       setToast({ message: 'Dépense enregistrée dans l\'application (mode local) 📱', type: 'success' });
     }
@@ -100,6 +110,31 @@ export function App() {
     setToast({ message: msg, type });
   };
 
+  // 1. GARDE D'AUTHENTIFICATION SUPABASE : Si l'utilisateur n'est PAS connecté, imposer AuthPage
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-100 dark:bg-gray-950 flex items-center justify-center p-4">
+        <div className="text-center space-y-3">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-xs font-bold text-gray-500">Vérification de la session Supabase...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <AuthPage
+        onAuthSuccess={(user) => {
+          setCurrentUser(user);
+          setToast({ message: 'Connexion réussie ! Welcome 🚀', type: 'success' });
+          loadData();
+        }}
+      />
+    );
+  }
+
+  // 2. UTILISATEUR AUTHENTIFIÉ : Accès complet à l'application mobile
   const monthlyTotal = calculateMonthlyTotal(expenses);
 
   return (
@@ -110,16 +145,6 @@ export function App() {
         message={toast.message}
         type={toast.type}
         onClose={() => setToast({ message: '', type: 'success' })}
-      />
-
-      {/* Modal Authentification Gmail / Google */}
-      <AuthModal
-        isOpen={showAuthModal}
-        onClose={() => setShowAuthModal(false)}
-        onAuthSuccess={(user) => {
-          setCurrentUser(user);
-          setToast({ message: 'Connexion Supabase réussie ! ☁️', type: 'success' });
-        }}
       />
 
       {/* Toggler cadre mobile / Plein écran */}
@@ -153,7 +178,6 @@ export function App() {
           monthlyTotal={monthlyTotal}
           monthlyBudget={monthlyBudget}
           currentUser={currentUser}
-          onOpenAuth={() => setShowAuthModal(true)}
           onOpenSettings={() => setActiveTab('settings')}
         />
 
@@ -197,7 +221,6 @@ export function App() {
               isDarkMode={isDarkMode}
               onToggleTheme={() => setIsDarkMode(!isDarkMode)}
               currentUser={currentUser}
-              onOpenAuth={() => setShowAuthModal(true)}
               onShowToast={showToastMsg}
             />
           )}

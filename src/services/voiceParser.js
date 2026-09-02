@@ -115,7 +115,6 @@ export const cleanDescriptionFromText = (text) => {
   if (!text) return 'Dépense vocale';
   
   let desc = text
-    // Bruit de salutations / politesse
     .replace(/^salam,?\s*/i, '')
     .replace(/^salem,?\s*/i, '')
     .replace(/^bonjour,?\s*/i, '')
@@ -124,7 +123,6 @@ export const cleanDescriptionFromText = (text) => {
     .replace(/svp/gi, '')
     .replace(/عيشك/gi, '')
     .replace(/يرحم والديك/gi, '')
-    // Verbes d'action
     .replace(/^je veux commander\s+/i, '')
     .replace(/^je veux acheter\s+/i, '')
     .replace(/^je veux\s+/i, '')
@@ -135,7 +133,6 @@ export const cleanDescriptionFromText = (text) => {
     .replace(/^خلصت\s+/i, '')
     .replace(/^خذيت\s+/i, '')
     .replace(/^ركبت\s+/i, '')
-    // Mots de prix
     .replace(/à\s+\d+\s*(dinars?|dt|tnd)?/gi, '')
     .replace(/pour\s+\d+\s*(dinars?|dt|tnd)?/gi, '')
     .replace(/بـ\d+\s*دنانير?/g, '')
@@ -144,7 +141,6 @@ export const cleanDescriptionFromText = (text) => {
     .replace(/\d+\s*(dinars?|dt|tnd)/gi, '')
     .trim();
 
-  // Capitaliser la première lettre si elle est latine
   if (desc && /^[a-zA-Z]/.test(desc)) {
     desc = desc.charAt(0).toUpperCase() + desc.slice(1);
   }
@@ -169,9 +165,9 @@ export const parseHybridVoiceInput = (rawText) => {
 };
 
 /**
- * SpeechRecognition Web API
+ * SpeechRecognition Web API (Optimisé pour fr-FR et ar-TN)
  */
-export const createSpeechRecognizer = ({ lang = 'ar-TN', onResult, onError, onEnd }) => {
+export const createSpeechRecognizer = ({ lang = 'fr-FR', onResult, onError, onEnd }) => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   
   if (!SpeechRecognition) {
@@ -179,16 +175,18 @@ export const createSpeechRecognizer = ({ lang = 'ar-TN', onResult, onError, onEn
   }
 
   const recognition = new SpeechRecognition();
-  recognition.continuous = true;
+  recognition.continuous = false; // Mode non-continu pour réactivité maximale
   recognition.interimResults = true;
   recognition.lang = lang;
 
   recognition.onresult = (event) => {
-    let transcript = '';
+    let resultText = '';
     for (let i = event.resultIndex; i < event.results.length; i++) {
-      transcript += event.results[i][0].transcript;
+      resultText += event.results[i][0].transcript;
     }
-    onResult(transcript, event.results[0].isFinal);
+    if (resultText) {
+      onResult(resultText, true);
+    }
   };
 
   recognition.onerror = (event) => {
