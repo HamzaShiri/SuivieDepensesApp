@@ -1,11 +1,11 @@
 import { CATEGORIES } from '../utils/categories';
 
 /**
- * MOTEUR D'ANALYSE HYBRIDE FRANCO-ARABE (Code-Switching Tunisien & Français)
- * Traite les phrases mixtes fr-FR + ar-TN (ex: "شريت un café بدينارين", "Payé 5 dinars pour taxi")
+ * MOTEUR DE PARSING MULTILINGUE & CODE-SWITCHING (Arabe + Français)
+ * Préserve les mots dans leur écriture et langue d'origine sans traduction forcée.
  */
 
-// Mappage des nombres en Français et Dialecte Arabe Tunisien
+// Table d'extraction des montants en Français et Arabe Tunisien
 const MULTI_NUMBERS = [
   // Français
   { words: ['un dinar', '1 dinar', 'un dt', 'un tnd'], val: 1 },
@@ -26,7 +26,6 @@ const MULTI_NUMBERS = [
   { words: ['cent dinars', '100 dinars'], val: 100 },
   { words: ['deux dinars et demi', '2.5 dinars', 'deux et demi'], val: 2.5 },
   { words: ['trois dinars et demi', '3.5 dinars'], val: 3.5 },
-  { words: ['un millime', '1000 millimes'], val: 1 },
 
   // Arabe Tunisien
   { words: ['دينار', 'واحد دينار', 'دنية'], val: 1 },
@@ -48,13 +47,13 @@ const MULTI_NUMBERS = [
 ];
 
 /**
- * Extrait le montant d'une phrase hybride (Français & Arabe)
+ * Extrait le montant d'une phrase Code-Switching (Français + Arabe)
  */
 export const extractAmountFromHybridText = (text) => {
   if (!text) return 0;
   const clean = text.trim().toLowerCase();
 
-  // 1. Détection directe de chiffres (ex: "12.500", "5 dinars", "3.5 TND", "15,500")
+  // 1. Détection de chiffres directs (ex: "12.500", "5 dinars", "3.5 TND", "15 DT")
   const digitMatches = clean.match(/(\d+([.,]\d+)?)/);
   if (digitMatches) {
     const num = parseFloat(digitMatches[1].replace(',', '.'));
@@ -65,7 +64,7 @@ export const extractAmountFromHybridText = (text) => {
     return num;
   }
 
-  // 2. Dictionnaire hybride de mots de nombre
+  // 2. Mots de nombre
   for (const item of MULTI_NUMBERS) {
     for (const w of item.words) {
       if (clean.includes(w)) {
@@ -74,7 +73,6 @@ export const extractAmountFromHybridText = (text) => {
     }
   }
 
-  // 3. Cas spécifiques dialectaux & français
   if (clean.includes('ألفين') || clean.includes('الفين')) return 2;
   if (clean.includes('ألف') || clean.includes('الف')) return 1;
 
@@ -82,38 +80,27 @@ export const extractAmountFromHybridText = (text) => {
 };
 
 /**
- * Détecte la catégorie parmi les mots-clés Français & Arabes
+ * Détecte la catégorie la plus adaptée parmi les mots Français et Arabes
  */
 export const detectCategoryFromText = (text) => {
   if (!text) return 'Autres';
   const lowerText = text.toLowerCase();
 
-  // Liste élargie de mots-clés Français + Arabes par catégorie
-  const frenchKeywordsMap = {
-    Nourriture: ['pain', 'gâteau', 'déjeuner', 'dîner', 'restaurant', 'supermarché', 'carrefour', 'monoprix', 'marché', 'poulet', 'viande', 'poisson', 'légumes', 'fruits', 'lait', 'eau', 'sandwich', 'pizza', 'makla', 'nourriture'],
-    Transport: ['taxi', 'bus', 'métro', 'train', 'essence', 'gazole', 'autoroute', 'parking', 'transport', 'louage', 'volant', 'station'],
-    Logement: ['loyer', 'maison', 'appartement', 'meuble', 'chaise', 'table', 'peinture', 'clé', 'serrure', 'ménage'],
-    Factures: ['facture', 'steg', 'sonede', 'téléphone', 'internet', 'recharge', 'ooredoo', 'orange', 'telecom', 'électricité', 'eau', 'wifi'],
-    Santé: ['pharmacie', 'médicament', 'docteur', 'médecin', 'analyse', 'hôpital', 'santé', 'ordonnance', 'sirop', 'pilule'],
-    Éducation: ['livre', 'cahier', 'stylo', 'école', 'université', 'cours', 'formation', 'études', 'Inscription'],
-    Shopping: ['vêtement', 'chaussure', 'pantalon', 'chemise', 'robe', 'zara', 'shopping', 'sac', 'montre', 'parfum'],
-    Divertissement: ['café', 'cinéma', 'film', 'jeu', 'voyage', 'sport', 'gym', 'vacances', 'plage', 'sortie', 'match'],
+  const keywordsMap = {
+    Nourriture: ['كسكسي', 'pain', 'gâteau', 'déjeuner', 'dîner', 'restaurant', 'supermarché', 'carrefour', 'monoprix', 'marché', 'poulet', 'viande', 'poisson', 'légumes', 'fruits', 'lait', 'eau', 'sandwich', 'pizza', 'makla', 'خبز', 'حوت', 'لحم', 'دجاج', 'خضرة', 'غلة', 'مغزة', 'عشاء', 'فطور', 'مركاز', 'بقالة', 'حليب', 'ماء', 'روز', 'شاورما'],
+    Transport: ['taxi', 'bus', 'métro', 'train', 'essence', 'gazole', 'autoroute', 'parking', 'transport', 'louage', 'station', 'تاكسي', 'ترانسپور', 'كار', 'مترو', 'تران', 'مازوط', 'بنزين', 'اجرة', 'باركينغ'],
+    Logement: ['loyer', 'maison', 'appartement', 'meuble', 'chaise', 'table', 'peinture', 'clé', 'serrure', 'كراء', 'دار', 'صيانة', 'أثاث'],
+    Factures: ['facture', 'steg', 'sonede', 'téléphone', 'internet', 'recharge', 'ooredoo', 'orange', 'telecom', 'électricité', 'eau', 'wifi', 'فاتورة', 'ضؤ', 'ماء', 'أنترنيت', 'شارج', 'تلفون', 'كارت'],
+    Santé: ['pharmacie', 'médicament', 'docteur', 'médecin', 'analyse', 'hôpital', 'santé', 'ordonnance', 'دواء', 'فرماسي', 'طبيب', 'سبيطار', 'حكيم', 'تحليل', 'صحة'],
+    Éducation: ['livre', 'cahier', 'stylo', 'école', 'université', 'cours', 'formation', 'études', 'قراية', 'كتوب', 'كراسات', 'مدرسة', 'جامعة', 'فروض'],
+    Shopping: ['vêtement', 'chaussure', 'pantalon', 'chemise', 'robe', 'zara', 'shopping', 'sac', 'montre', 'parfum', 'دبش', 'حوايج', 'صباط', 'سبرديلة', 'لبسة', 'مغازة'],
+    Divertissement: ['café', 'cinéma', 'film', 'jeu', 'voyage', 'sport', 'gym', 'vacances', 'plage', 'sortie', 'قهوة', 'تفريد', 'العاب', 'نادي', 'جيم'],
   };
 
-  // 1. Tester les mots-clés français
-  for (const [catId, keywords] of Object.entries(frenchKeywordsMap)) {
+  for (const [catId, keywords] of Object.entries(keywordsMap)) {
     for (const kw of keywords) {
-      if (lowerText.includes(kw)) {
-        return catId;
-      }
-    }
-  }
-
-  // 2. Tester les mots-clés arabes standards
-  for (const cat of CATEGORIES) {
-    for (const kw of cat.keywords) {
       if (lowerText.includes(kw.toLowerCase())) {
-        return cat.id;
+        return catId;
       }
     }
   }
@@ -122,36 +109,43 @@ export const detectCategoryFromText = (text) => {
 };
 
 /**
- * Nettoie la description en retirant les verbes d'action et mots de bruit
+ * Nettoie la description tout en CONSERVANT les mots arabes et français intacts
  */
 export const cleanDescriptionFromText = (text) => {
   if (!text) return 'Dépense vocale';
   
   let desc = text
-    // Bruit Arabe
+    // Bruit de salutations / politesse
+    .replace(/^salam,?\s*/i, '')
+    .replace(/^salem,?\s*/i, '')
+    .replace(/^bonjour,?\s*/i, '')
+    .replace(/^bonsoir,?\s*/i, '')
+    .replace(/s'il vous plaît/gi, '')
+    .replace(/svp/gi, '')
+    .replace(/عيشك/gi, '')
+    .replace(/يرحم والديك/gi, '')
+    // Verbes d'action
+    .replace(/^je veux commander\s+/i, '')
+    .replace(/^je veux acheter\s+/i, '')
+    .replace(/^je veux\s+/i, '')
+    .replace(/^j'ai acheté\s+/i, '')
+    .replace(/^acheté\s+/i, '')
+    .replace(/^payé\s+/i, '')
     .replace(/^شريت\s+/i, '')
     .replace(/^خلصت\s+/i, '')
     .replace(/^خذيت\s+/i, '')
     .replace(/^ركبت\s+/i, '')
+    // Mots de prix
+    .replace(/à\s+\d+\s*(dinars?|dt|tnd)?/gi, '')
+    .replace(/pour\s+\d+\s*(dinars?|dt|tnd)?/gi, '')
+    .replace(/بـ\d+\s*دنانير?/g, '')
     .replace(/بثلاثة\s+دنانير/g, '')
     .replace(/بدينارين/g, '')
-    .replace(/بـ\d+\s*دنانير?/g, '')
-    // Bruit Français
-    .replace(/^j'ai acheté\s+/i, '')
-    .replace(/^acheté\s+/i, '')
-    .replace(/^payé\s+/i, '')
-    .replace(/^course de\s+/i, '')
-    .replace(/^facture de\s+/i, '')
-    .replace(/pour\s+\d+\s*dinars?/gi, '')
-    .replace(/à\s+\d+\s*dinars?/gi, '')
-    .replace(/\d+\s*dinars?/gi, '')
-    .replace(/\d+\s*dt/gi, '')
-    .replace(/\d+\s*tnd/gi, '')
-    .replace(/دنانير|دينار|مليم|DT|TND/gi, '')
+    .replace(/\d+\s*(dinars?|dt|tnd)/gi, '')
     .trim();
 
-  // Capitaliser la première lettre
-  if (desc) {
+  // Capitaliser la première lettre si elle est latine
+  if (desc && /^[a-zA-Z]/.test(desc)) {
     desc = desc.charAt(0).toUpperCase() + desc.slice(1);
   }
 
@@ -159,7 +153,7 @@ export const cleanDescriptionFromText = (text) => {
 };
 
 /**
- * Analyse complète de la phrase vocale hybride
+ * Analyse complète
  */
 export const parseHybridVoiceInput = (rawText) => {
   const montant = extractAmountFromHybridText(rawText);
@@ -170,12 +164,12 @@ export const parseHybridVoiceInput = (rawText) => {
     rawText,
     montant: montant > 0 ? montant : 1.000,
     categorie,
-    description: description || 'Dépense'
+    description: description || 'Dépense vocale'
   };
 };
 
 /**
- * Initialise le Web Speech API (Langue multilingue ar-TN / fr-FR)
+ * SpeechRecognition Web API
  */
 export const createSpeechRecognizer = ({ lang = 'ar-TN', onResult, onError, onEnd }) => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -185,9 +179,9 @@ export const createSpeechRecognizer = ({ lang = 'ar-TN', onResult, onError, onEn
   }
 
   const recognition = new SpeechRecognition();
-  recognition.continuous = false;
+  recognition.continuous = true;
   recognition.interimResults = true;
-  recognition.lang = lang; // 'ar-TN' ou 'fr-FR' ou 'fr-TN'
+  recognition.lang = lang;
 
   recognition.onresult = (event) => {
     let transcript = '';
