@@ -21,11 +21,25 @@ export const AddExpense = ({ onSaveExpense, onFinish }) => {
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Saisie vocale confirmée
+  // Injection depuis la Saisie vocale
   const handleConfirmVoiceData = (parsedData) => {
     if (parsedData.description) setDescription(parsedData.description);
     if (parsedData.montant) setMontant(parsedData.montant.toString());
     if (parsedData.categorie) setCategorie(parsedData.categorie);
+  };
+
+  // Enregistrement direct via la voix
+  const handleDirectVoiceSave = async (expenseData) => {
+    setIsLoading(true);
+    try {
+      await onSaveExpense(expenseData);
+      confetti({ particleCount: 50, spread: 60, origin: { y: 0.8 } });
+      if (onFinish) onFinish();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Photo sélectionnée & compressée
@@ -58,7 +72,6 @@ export const AddExpense = ({ onSaveExpense, onFinish }) => {
 
       await onSaveExpense(expenseData);
 
-      // Effet Confetti de succès
       confetti({
         particleCount: 50,
         spread: 60,
@@ -83,7 +96,7 @@ export const AddExpense = ({ onSaveExpense, onFinish }) => {
           <span>Ajouter une Dépense</span>
         </h2>
         <p className="text-xs text-blue-100 mt-1">
-          Saisissez manuellement ou utilisez l'IA vocale en arabe tunisien.
+          Saisissez manuellement ou utilisez l'IA vocale multilingue.
         </p>
       </div>
 
@@ -227,6 +240,7 @@ export const AddExpense = ({ onSaveExpense, onFinish }) => {
         isOpen={showVoiceModal}
         onClose={() => setShowVoiceModal(false)}
         onConfirmVoiceData={handleConfirmVoiceData}
+        onDirectSaveExpense={handleDirectVoiceSave}
       />
 
       <PhotoCaptureModal

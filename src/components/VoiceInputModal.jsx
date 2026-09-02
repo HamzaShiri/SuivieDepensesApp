@@ -1,26 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, X, Check, Volume2, Play, Pause, AlertCircle, Clock, Sparkles, Edit3 } from 'lucide-react';
+import { Mic, MicOff, X, Check, Volume2, Clock, Sparkles, Edit3, Save, Zap } from 'lucide-react';
 import { createSpeechRecognizer, parseHybridVoiceInput } from '../services/voiceParser';
 import { formatTND } from '../utils/currency';
 
-export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData }) => {
+export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData, onDirectSaveExpense }) => {
   const [lang, setLang] = useState('ar-TN'); // 'ar-TN' ou 'fr-FR'
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [transcript, setTranscript] = useState('');
   const [parsedResult, setParsedResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
-  const [audioUrl, setAudioUrl] = useState(null);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
-  // Références d'enregistrement
   const recognitionRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
   const timerIntervalRef = useRef(null);
-  const audioPlayerRef = useRef(null);
 
-  // Phrases d'exemples multilingues Code-Switching (Arabe + Français)
+  // Exemples hybrides cliquables
   const samplePhrases = [
     'Salam, je veux commander un كسكسي, s\'il vous plaît',
     'شريت un café بدينارين',
@@ -33,72 +27,37 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData }) => {
     if (isOpen) {
       resetState();
     } else {
-      stopAllRecording();
+      stopRecording();
     }
   }, [isOpen]);
 
   const resetState = () => {
-    stopAllRecording();
+    stopRecording();
     setTranscript('');
     setParsedResult(null);
     setErrorMsg('');
-    setAudioUrl(null);
-    setIsPlayingAudio(false);
     setRecordingSeconds(0);
   };
 
   const triggerHaptic = () => {
     if (navigator.vibrate) {
-      try {
-        navigator.vibrate(50);
-      } catch (e) {}
+      try { navigator.vibrate(50); } catch (e) {}
     }
   };
 
-  // FORMATAGE DU CHRONOMÈTRE (ex: 00:05)
   const formatTimer = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // DÉMARRAGE DE L'ENREGISTREMENT (1er clic)
-  const startRecording = async () => {
+  // DÉMARRAGE DE LA RECONNAISSANCE VOCALE (1er Clic)
+  const startRecording = () => {
     triggerHaptic();
     setErrorMsg('');
     setTranscript('');
     setParsedResult(null);
-    setAudioUrl(null);
-    audioChunksRef.current = [];
 
-    // 1. Initialisation de l'API MediaRecorder (pour la réécoute audio)
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        if (audioChunksRef.current.length > 0) {
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          const url = URL.createObjectURL(audioBlob);
-          setAudioUrl(url);
-        }
-        // Fermer les pistes du microphone
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
-    } catch (err) {
-      console.warn('MediaRecorder non supporté ou accès refusé:', err);
-    }
-
-    // 2. Initialisation de la Reconnaissance Vocale
     const rec = createSpeechRecognizer({
       lang,
       onResult: (text, isFinal) => {
@@ -110,40 +69,48 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData }) => {
       },
       onError: (err) => {
         console.warn('Erreur SpeechRecognition:', err);
+        setIsRecording(false);
         if (err === 'not-allowed') {
-          setErrorMsg('Accès au micro refusé dans le navigateur.');
+          setErrorMsg('Permission micro refusée dans le navigateur.');
+        } else if (err === 'no-speech') {
+          setErrorMsg('Aucune voix détectée. Parlez plus fort en face du micro.');
+        } else {
+          setErrorMsg('Impossible d\'activer le micro. Saisissez votre texte ci-dessous.');
         }
       },
       onEnd: () => {
-        // En cas de fin automatique
+        setIsRecording(false);
       }
     });
 
-    if (rec) {
-      recognitionRef.current = rec;
-      try {
-        rec.start();
-      } catch (e) {
-        console.warn('Erreur start rec:', e);
-      }
+    if (!rec) {
+      setErrorMsg('L\'API Web Speech n\'est pas disponible. Utilisez la saisie ou nos exemples.');
+      return;
     }
 
-    // 3. Chronomètre & Limite Max (60s)
-    setIsRecording(true);
-    setRecordingSeconds(0);
+    try {
+      recognitionRef.current = rec;
+      rec.start();
+      setIsRecording(true);
+      setRecordingSeconds(0);
 
-    timerIntervalRef.current = setInterval(() => {
-      setRecordingSeconds((prev) => {
-        if (prev >= 59) {
-          stopRecording(); // Arrêt automatique à 60 secondes
-          return 60;
-        }
-        return prev + 1;
-      });
-    }, 1000);
+      // Chronomètre & Limite max (60s)
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => {
+          if (prev >= 59) {
+            stopRecording();
+            return 60;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+    } catch (err) {
+      console.warn('Erreur start rec:', err);
+      setIsRecording(false);
+    }
   };
 
-  // ARRÊT DE L'ENREGISTREMENT (2ème clic)
+  // ARRÊT DE LA RECONNAISSANCE VOCALE (2ème Clic)
   const stopRecording = () => {
     triggerHaptic();
 
@@ -152,62 +119,19 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData }) => {
       timerIntervalRef.current = null;
     }
 
-    // Vérifier la durée minimale (1 seconde)
-    if (recordingSeconds < 1 && isRecording) {
-      setErrorMsg('Parlez plus longtemps (minimum 1 seconde)');
-      stopAllRecording();
-      return;
-    }
-
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (e) {}
-      recognitionRef.current = null;
-    }
-
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch (e) {}
-    }
-
-    setIsRecording(false);
-  };
-
-  const stopAllRecording = () => {
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
-    }
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (e) {}
       recognitionRef.current = null;
     }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try { mediaRecorderRef.current.stop(); } catch (e) {}
-    }
+
     setIsRecording(false);
   };
 
-  // BASCULEMENT DU BOUTON (TOGGLE 1er CLIC / 2ème CLIC)
   const handleToggleClick = () => {
     if (isRecording) {
       stopRecording();
     } else {
       startRecording();
-    }
-  };
-
-  // LECTURE / PAUSE DE LA RÉÉCOUTE AUDIO
-  const toggleAudioPlayback = () => {
-    if (!audioPlayerRef.current) return;
-    if (isPlayingAudio) {
-      audioPlayerRef.current.pause();
-      setIsPlayingAudio(false);
-    } else {
-      audioPlayerRef.current.play();
-      setIsPlayingAudio(true);
     }
   };
 
@@ -221,9 +145,23 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData }) => {
     }
   };
 
+  // INJECTION DANS LE FORMULAIRE
   const handleConfirm = () => {
     if (parsedResult) {
       onConfirmVoiceData(parsedResult);
+      onClose();
+    }
+  };
+
+  // ENREGISTREMENT DIRECT DANS SUPABASE
+  const handleDirectSave = async () => {
+    if (parsedResult && onDirectSaveExpense) {
+      await onDirectSaveExpense({
+        description: parsedResult.description,
+        montant: parsedResult.montant,
+        categorie: parsedResult.categorie,
+        date: new Date().toISOString()
+      });
       onClose();
     }
   };
@@ -242,9 +180,9 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData }) => {
             </div>
             <div>
               <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">
-                Saisie Vocale (Arabe + Français)
+                Saisie Vocale & Injection IA
               </h3>
-              <p className="text-[11px] text-gray-400">Reconnaissance multilingue sans traduction</p>
+              <p className="text-[11px] text-gray-400">Reconnaissance multilingue Arabe + Français</p>
             </div>
           </div>
           <button
@@ -281,10 +219,8 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData }) => {
           </button>
         </div>
 
-        {/* ZONE DU BOUTON TOGGLE MICRO & CHRONOMÈTRE */}
-        <div className="my-4 flex flex-col items-center justify-center">
-          
-          {/* Bouton Toggle (1er clic = Start, 2ème clic = Stop) */}
+        {/* BOUTON TOGGLE MICRO (1er clic = Démarrer, 2ème clic = Arrêter) */}
+        <div className="my-3 flex flex-col items-center justify-center">
           <button
             type="button"
             onClick={handleToggleClick}
@@ -306,71 +242,37 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData }) => {
               </div>
             )}
 
-            {/* Animation de point rouge clignotant lors de l'enregistrement */}
             {isRecording && (
               <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full border-2 border-white animate-ping" />
             )}
           </button>
 
-          {/* Statut & Chronomètre en temps réel */}
-          <div className="mt-3 text-center">
+          <div className="mt-2 text-center">
             {isRecording ? (
-              <div className="flex items-center justify-center space-x-2 text-red-600 dark:text-red-400 font-bold text-sm animate-pulse">
-                <Clock className="w-4 h-4" />
-                <span>Enregistrement en cours... ({formatTimer(recordingSeconds)})</span>
+              <div className="flex items-center justify-center space-x-2 text-red-600 dark:text-red-400 font-bold text-xs animate-pulse">
+                <Clock className="w-3.5 h-3.5" />
+                <span>Enregistrement... ({formatTimer(recordingSeconds)})</span>
               </div>
             ) : (
-              <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                Cliquez 1 fois pour démarrer, ré-appuyez pour terminer
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">
+                Cliquez 1 fois pour parler, ré-appuyez pour terminer
               </span>
             )}
           </div>
-
         </div>
 
-        {/* Message d'erreur ou d'avertissement */}
         {errorMsg && (
-          <div className="mb-3 p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl flex items-start space-x-2 text-xs text-amber-700 dark:text-amber-300">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div className="mb-3 p-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl flex items-center space-x-2 text-xs text-amber-700 dark:text-amber-300">
+            <Sparkles className="w-4 h-4 shrink-0 text-amber-500" />
             <span>{errorMsg}</span>
           </div>
         )}
 
-        {/* LECTEUR DE RÉÉCOUTE AUDIO DU FICHIER ENREGISTRÉ */}
-        {audioUrl && (
-          <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-800 flex items-center justify-between">
-            <div className="flex items-center space-x-2.5">
-              <button
-                type="button"
-                onClick={toggleAudioPlayback}
-                className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md hover:bg-blue-700 transition-colors"
-              >
-                {isPlayingAudio ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-              </button>
-              <div>
-                <span className="text-xs font-bold text-blue-900 dark:text-blue-200 block">
-                  Écouter votre enregistrement
-                </span>
-                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
-                  Réécoute audio avant validation
-                </span>
-              </div>
-            </div>
-
-            <audio
-              ref={audioPlayerRef}
-              src={audioUrl}
-              onEnded={() => setIsPlayingAudio(false)}
-              className="hidden"
-            />
-          </div>
-        )}
-
-        {/* CHAMP DE TEXTE RECONNU & CONSERVATION DES MOTS SANS TRADUCTION */}
+        {/* CHAMP DE TEXTE RECONNU */}
         <div className="mb-3">
           <label className="block text-[11px] font-semibold text-gray-400 mb-1 flex items-center space-x-1">
             <Edit3 className="w-3.5 h-3.5" />
-            <span>Transcription (Mots conservés en version originale) :</span>
+            <span>Texte reconnu (Modifiable en direct) :</span>
           </label>
           <input
             type="text"
@@ -383,9 +285,9 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData }) => {
 
         {/* PRÉVISUALISATION DE L'ANALYSE IA */}
         {parsedResult && (
-          <div className="mb-3 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200 dark:border-emerald-800">
-            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block mb-1.5">
-              ✨ Analyse IA Code-Switching :
+          <div className="mb-3 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200 dark:border-emerald-800 space-y-2">
+            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">
+              ✨ Données extraites de votre voix :
             </span>
             <div className="grid grid-cols-3 gap-1.5 text-center">
               <div className="bg-white dark:bg-gray-900 p-1.5 rounded-xl border border-emerald-100 dark:border-emerald-900">
@@ -410,10 +312,10 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData }) => {
           </div>
         )}
 
-        {/* EXEMPLES CLIQUABLES CODE-SWITCHING */}
+        {/* EXEMPLES CLIQUABLES */}
         <div className="mb-4">
           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
-            💡 Exemples de requêtes mixtes :
+            💡 Essayer avec des phrases d'exemples :
           </span>
           <div className="flex flex-wrap gap-1">
             {samplePhrases.map((phrase, idx) => (
@@ -429,24 +331,37 @@ export const VoiceInputModal = ({ isOpen, onClose, onConfirmVoiceData }) => {
           </div>
         </div>
 
-        {/* ACTIONS DE VALIDATION */}
-        <div className="flex space-x-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 py-2.5 text-xs font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-2xl"
-          >
-            Annuler
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={!parsedResult}
-            className="flex-1 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-700 hover:to-emerald-700 rounded-2xl shadow-md disabled:opacity-50 flex items-center justify-center space-x-1"
-          >
-            <Check className="w-4 h-4" />
-            <span>Valider & Injecter</span>
-          </button>
+        {/* ACTIONS */}
+        <div className="space-y-2">
+          <div className="flex space-x-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 text-xs font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-2xl"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={!parsedResult}
+              className="flex-1 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-2xl shadow-md disabled:opacity-50 flex items-center justify-center space-x-1"
+            >
+              <Check className="w-4 h-4" />
+              <span>Injecter dans le Formulaire</span>
+            </button>
+          </div>
+
+          {parsedResult && onDirectSaveExpense && (
+            <button
+              type="button"
+              onClick={handleDirectSave}
+              className="w-full py-2.5 text-xs font-extrabold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 rounded-2xl shadow-lg flex items-center justify-center space-x-1"
+            >
+              <Zap className="w-4 h-4 text-amber-300" />
+              <span>⚡ Enregistrer Directement dans Supabase</span>
+            </button>
+          )}
         </div>
 
       </div>
